@@ -1,0 +1,158 @@
+# Load necessary libraries
+library(ggplot2)
+library(readr)  # For loading CSV files
+library(corrplot)  # For visualizing correlations
+library(dplyr)
+library(class)
+
+# Load the dataset 
+covid <- read.csv("./country_wise_latest.csv")
+
+
+# Display basic information about the dataset
+summary(covid)  # Summary statistics
+str(covid)      # Structure of the dataset
+head(covid)     # First 6 rows of the data
+tail(covid)     # Last 6 rows of the data
+
+# Data Preprocessing: 
+
+# Check for missing values
+missing_values <- colSums(is.na(covid))
+print(missing_values)
+
+
+# Remove rows with missing values (if necessary)
+covid <- na.omit(covid)
+
+# Convert columns to appropriate data types
+covid$Country.Region <- as.factor(covid$Country.Region)
+covid$WHO.Region <- as.factor(covid$WHO.Region)
+
+
+# List of numerical columns
+# Identify all numeric columns in the dataset
+#numeric_columns <- names(covid)[sapply(covid, is.numeric)]
+columns <- c("Confirmed", "Deaths", "Recovered")
+
+# Boxplot for columns
+boxplot(covid$Confirmed, main = "Boxplot of Confirmed Cases")
+boxplot(covid$Deaths, main = "Boxplot of Deaths")
+boxplot(covid$Recovered, main = "Boxplot of Recovered")
+
+# Distribution before and after outlier removal
+hist(covid$Confirmed, main = "Distribution of Confirmed Cases (Original)", xlab = "Confirmed Cases", col = "lightblue", breaks = 50)
+hist(covid$Deaths, main = "Distribution of Deaths (Original)", xlab = "Death Cases", col = "lightblue", breaks = 50)
+hist(covid$Recovered, main = "Distribution of Recovered (Original)", xlab = "Recovered Cases", col = "lightblue", breaks = 50)
+
+# Outlier Detection and Removal using IQR method for all numerical columns
+
+
+# Loop through each numeric column and remove outliers
+for (col in columns) {
+  # Calculate IQR
+  Q1 <- quantile(covid[[col]], 0.25, na.rm = TRUE)
+  Q3 <- quantile(covid[[col]], 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  
+  # Define the bounds for outliers
+  lower <- Q1 - 1.5 * IQR
+  upper <- Q3 + 1.5 * IQR
+  
+  # Filter the dataset to remove outliers
+  covid <- covid %>% filter(covid[[col]] >= lower & covid[[col]] <= upper)
+}
+
+
+# Plot distribution after outlier removal
+hist(covid$Confirmed, main = "Distribution of Confirmed Cases (After Outlier Removal)", xlab = "Confirmed Cases", col = "lightgreen", breaks = 50)
+hist(covid$Deaths, main = "Distribution of Deaths Cases (After Outlier Removal)", xlab = "Death Cases", col = "lightgreen", breaks = 50)
+hist(covid$Recovered, main = "Distribution of Recovered Cases (After Outlier Removal)", xlab = "Recovered Cases", col = "lightgreen", breaks = 50)
+
+str(covid)
+
+# Split data into train (70%) and test (30%) datasets
+set.seed(123) # for reproducibility
+indexes = sample(1:nrow(covid), size = 0.3 * nrow(covid))
+
+Test_data = covid[indexes,] # Test dataset 30%
+Train_data = covid[-indexes,] # Train dataset 70%
+
+# Check dimensions and structure
+dim(Test_data)
+dim(Train_data)
+str(Train_data)
+
+# Calculate correlation between numeric columns
+numeric_columns <- names(covid)[sapply(covid, is.numeric)]
+
+Attribute_Corr <- cor(Train_data[, numeric_columns], method = "pearson")
+
+# Plot correlation heatmap
+corrplot(Attribute_Corr, type = "upper", method = "color", addCoef.col = "black", 
+         title = "Correlation between the attributes", number.cex = 14 / ncol(Train_data[, numeric_columns]), mar = c(1, 1, 1, 1))
+
+
+# Display the relationship between 'Confirmed' and other independent variables
+
+# Numerical Variables: 
+
+# Deaths
+scatter.smooth(x = Train_data$Deaths, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ Deaths")
+# Recovered
+scatter.smooth(x = Train_data$Recovered, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ Recovered")
+# Active
+scatter.smooth(x = Train_data$Active, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ Active Cases")
+# New cases
+scatter.smooth(x = Train_data$New.cases, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ New Cases")
+# New deaths
+scatter.smooth(x = Train_data$New.deaths, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ New Deaths")
+# New recovered
+scatter.smooth(x = Train_data$New.recovered, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ New Recover")
+# Confirmed.last.week
+scatter.smooth(x = Train_data$Confirmed.last.week, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ Confirmed Last Week")
+# X1.week.change
+scatter.smooth(x = Train_data$X1.week.change, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ X1 Week Change")
+# X1.week...increase
+scatter.smooth(x = Train_data$X1.week...increase, y = Train_data$Confirmed, lpars = list(col = "red", lwd = 1, lty = 1), main = "Confirmed ~ X1 Week Increase")
+
+# Categorical Variables:
+
+# Country.Region
+boxplot(Confirmed ~ Country.Region, data = Train_data, main = "Confirmed Cases by Country Region", xlab = "Country Region", ylab = "Confirmed Cases")
+
+# WHO.Region
+boxplot(Confirmed ~ WHO.Region, data = Train_data, main = "Confirmed Cases by WHO Region", xlab = "WHO Region", ylab = "Confirmed Cases")
+
+ggplot(covid, aes(x = WHO.Region, fill = WHO.Region)) +
+  geom_bar() +
+  labs(title = "Distribution of Cases by WHO Region", x = "WHO Region", y = "Count") +
+  theme_minimal()
+
+# Create the regression model (log-transformation to improve normality)
+covid_model <- lm(log(Confirmed) ~ Deaths + Recovered + Active + 
+                    Deaths...100.Cases + Recovered...100.Cases + 
+                    Confirmed.last.week, data = Train_data)
+
+
+
+# View summary of the model
+summary(covid_model)
+
+# Predict on the Test dataset
+pred_covid <- predict(covid_model, Test_data)
+
+
+# Summary of predictions
+summary(pred_covid)
+
+# Bind the original values and predicted values together (convert log back to original scale)
+result_covid <- cbind("ID" = Test_data$Country.Region, 
+                      "Original Confirmed" = Test_data$Confirmed, 
+                      "Predicted Confirmed" = exp(pred_covid))  # Convert log scale back to original scale
+
+# Print the result
+print(result_covid)
+
+# Write the results to a CSV file
+write.csv(result_covid, file = "OriginalVsPredictedCovid.csv", row.names = FALSE)
